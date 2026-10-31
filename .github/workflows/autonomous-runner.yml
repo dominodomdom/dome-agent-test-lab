@@ -1,0 +1,150 @@
+name: DOME Agent OS — private Beauty task runner
+
+# Manual-only privileged workflow. Never add pull_request or push triggers here.
+on:
+  workflow_dispatch:
+    inputs:
+      approve_google_free_tier_data_use:
+        description: "I approve sending the selected private source files and task data to Google AI Studio free tier; Google may use submitted content to improve products."
+        required: true
+        type: boolean
+        default: false
+      task_mode:
+        description: "Start a new task or resume an existing draft PR."
+        required: true
+        type: choice
+        options: [run, resume]
+        default: run
+      goal:
+        description: "What should DOME OS Beauty implement?"
+        required: true
+        type: string
+      acceptance_criteria:
+        description: "One testable acceptance criterion per line."
+        required: true
+        type: string
+      context_paths:
+        description: "Private repository files the agents may read, one path per line."
+        required: true
+        type: string
+      allowed_path_prefixes:
+        description: "Paths the agents may create/update, one prefix per line. Keep this narrow."
+        required: true
+        type: string
+        default: "src/"
+      target_repository:
+        description: "Private target repository."
+        required: true
+        type: string
+        default: "dominodomdom/dome-os-beauty"
+      agent_os_ref:
+        description: "Branch containing the Agent OS runner implementation."
+        required: true
+        type: string
+        default: "agent-os/core-mvp"
+      base_ref:
+        description: "Target base branch for the generated draft PR."
+        required: true
+        type: string
+        default: "ai-factory"
+      required_checks_json:
+        description: 'Trusted required checks as JSON, e.g. [{"name":"verify","appId":15368}]'
+        required: true
+        type: string
+        default: '[{"name":"verify","appId":15368}]'
+      gemini_model:
+        description: "Google GenAI model ID; no paid-model fallback is configured."
+        required: true
+        type: string
+        default: "gemini-3.8-flash"
+      max_revisions:
+        description: "Maximum automatic revision attempts after failed CI."
+        required: true
+        type: choice
+        options: ["0", "1", "2"]
+        default: "2"
+      ci_wait_minutes:
+        description: "Maximum CI wait time per attempt."
+        required: true
+        type: choice
+        options: ["5", "10"]
+        default: "10"
+      existing_pr_url:
+        description: "Required only for resume mode: URL of an open draft PR in the target repository."
+        required: false
+        type: string
+      existing_commit_sha:
+        description: "Required only for resume mode: exact 40-character PR head commit SHA."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  autonomous-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Require explicit data-use approval and configured secrets
+        env:
+          APPROVED: ${{ inputs.approve_google_free_tier_data_use }}
+          TARGET_TOKEN: ${{ secrets.DOME_OS_BEAUTY_TOKEN }}
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ "$APPROVED" != "true" ]; then
+            echo "::error::Explicit Google AI Studio free-tier data-use approval is required. No private code was accessed."
+            exit 1
+          fi
+          if [ -z "$TARGET_TOKEN" ]; then
+            echo "::error::Add the fine-grained DOME_OS_BEAUTY_TOKEN secret to this repository."
+            exit 1
+          fi
+          if [ -z "$GEMINI_KEY" ]; then
+            echo "::error::Add the GEMINI_API_KEY secret to this repository."
+            exit 1
+          fi
+
+      - name: Checkout public test-lab harness
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Checkout private DOME OS Beauty Agent OS branch
+        uses: actions/checkout@v4
+        with:
+          repository: dominodomdom/dome-os-beauty
+          ref: ${{ inputs.agent_os_ref }}
+          token: ${{ secrets.DOME_OS_BEAUTY_TOKEN }}
+          path: private
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install only the Google GenAI SDK without lifecycle scripts
+        working-directory: private
+        run: npm install --ignore-scripts --no-audit --no-fund --no-save --package-lock=false @google/genai@2.4.0
+
+      - name: Run guarded autonomous task
+        working-directory: private
+        env:
+          APPROVE_GOOGLE_FREE_TIER_DATA_USE: ${{ inputs.approve_google_free_tier_data_use }}
+          TARGET_GITHUB_TOKEN: ${{ secrets.DOME_OS_BEAUTY_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TARGET_REPOSITORY: ${{ inputs.target_repository }}
+          BASE_REF: ${{ inputs.base_ref }}
+          TASK_GOAL: ${{ inputs.goal }}
+          ACCEPTANCE_CRITERIA: ${{ inputs.acceptance_criteria }}
+          CONTEXT_PATHS: ${{ inputs.context_paths }}
+          ALLOWED_PATH_PREFIXES: ${{ inputs.allowed_path_prefixes }}
+          REQUIRED_CHECKS_JSON: ${{ inputs.required_checks_json }}
+          GEMINI_MODEL: ${{ inputs.gemini_model }}
+          MAX_REVISIONS: ${{ inputs.max_revisions }}
+          CI_WAIT_MINUTES: ${{ inputs.ci_wait_minutes }}
+          TASK_MODE: ${{ inputs.task_mode }}
+          EXISTING_PR_URL: ${{ inputs.existing_pr_url }}
+          EXISTING_COMMIT_SHA: ${{ inputs.existing_commit_sha }}
+        run: node agent-os/scripts/run-autonomy-task.mjs
