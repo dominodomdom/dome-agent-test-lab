@@ -1,0 +1,15 @@
+{
+  "name": "dome-agent-test-lab",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Sanitized test harness for DOME Agent OS and StackBlitz WebContainers",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/validate-request.mjs && node --check scripts/run-demo.mjs",
+    "demo": "node scripts/run-demo.mjs"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "task_id": "demo-node-check-001",
+  "target_repository": "example-org/example-app",
+  "test_snapshot_ref": "0123456789abcdef0123456789abcdef01234567",
+  "execution_provider": "stackblitz-webcontainer",
+  "commands": [
+    "npm install",
+    "npm test",
+    "npm run check",
+    "npm run demo"
+  ]
+}
